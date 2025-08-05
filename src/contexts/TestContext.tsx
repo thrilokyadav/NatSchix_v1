@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+import { supabase } from '../supabaseClient';
+import { useAuth } from './AuthContext';
 
 interface Question {
   id: string;
   subject: string;
   question: string;
-  options: string[];
+  question_image_url?: string | null;
+  options: { text: string; image_url?: string | null }[];
   correctAnswer: number;
   difficulty: 'easy' | 'medium' | 'hard';
 }
@@ -35,6 +38,7 @@ interface TestContextType {
   nextQuestion: () => void;
   previousQuestion: () => void;
   submitTest: () => Promise<void>;
+  setTimeRemaining: (seconds: number) => void;
 }
 
 const TestContext = createContext<TestContextType | undefined>(undefined);
@@ -51,62 +55,10 @@ interface TestProviderProps {
   children: ReactNode;
 }
 
-// Mock questions data
-const mockQuestions: Question[] = [
-  // Math Questions
-  {
-    id: 'math_1',
-    subject: 'Math',
-    question: 'What is 15 × 8?',
-    options: ['120', '110', '130', '125'],
-    correctAnswer: 0,
-    difficulty: 'easy'
-  },
-  {
-    id: 'math_2',
-    subject: 'Math',
-    question: 'Solve for x: 2x + 5 = 17',
-    options: ['6', '5', '7', '8'],
-    correctAnswer: 0,
-    difficulty: 'medium'
-  },
-  // Science Questions
-  {
-    id: 'science_1',
-    subject: 'Science',
-    question: 'What is the chemical symbol for gold?',
-    options: ['Go', 'Gd', 'Au', 'Ag'],
-    correctAnswer: 2,
-    difficulty: 'easy'
-  },
-  {
-    id: 'science_2',
-    subject: 'Science',
-    question: 'Which planet is known as the Red Planet?',
-    options: ['Venus', 'Mars', 'Jupiter', 'Saturn'],
-    correctAnswer: 1,
-    difficulty: 'easy'
-  },
-  // Reasoning Questions
-  {
-    id: 'reasoning_1',
-    subject: 'Reasoning',
-    question: 'If all roses are flowers and some flowers are red, then:',
-    options: ['All roses are red', 'Some roses are red', 'No roses are red', 'Cannot be determined'],
-    correctAnswer: 3,
-    difficulty: 'medium'
-  },
-  {
-    id: 'reasoning_2',
-    subject: 'Reasoning',
-    question: 'What comes next in the sequence: 2, 6, 12, 20, ?',
-    options: ['28', '30', '32', '34'],
-    correctAnswer: 1,
-    difficulty: 'medium'
-  }
-];
+
 
 export const TestProvider: React.FC<TestProviderProps> = ({ children }) => {
+  const { user } = useAuth();
   const [testState, setTestState] = useState<TestState>({
     questions: [],
     answers: [],
@@ -116,32 +68,91 @@ export const TestProvider: React.FC<TestProviderProps> = ({ children }) => {
     startTime: null
   });
 
-  const startTest = () => {
-    // Shuffle and select questions (for demo, using all mock questions)
-    const shuffledQuestions = [...mockQuestions].sort(() => Math.random() - 0.5);
-    const selectedQuestions = shuffledQuestions.slice(0, 6); // 6 questions for demo
+  const startTest = async () => {
+    console.log('Starting test and fetching questions...');
     
-    const initialAnswers = selectedQuestions.map(q => ({
-      questionId: q.id,
-      selectedAnswer: null,
-      timeSpent: 0,
-      marked: false
-    }));
+    // Check if user has already taken the test
+    if (user) {
+      const { data: existingResults, error: resultsError } = await supabase
+        .from('test_results')
+        .select('id')
+        .eq('user_id', user.id);
+      
+      if (resultsError) {
+        console.error('Error checking existing test results:', resultsError);
+      } else if (existingResults && existingResults.length > 0) {
+        console.log('User has already taken the test');
+        // Optionally show a message to the user that they've already taken the test
+        return;
+      }
+    }
+    
+    try {
+      const { data: fetchedQuestions, error } = await supabase
+        .from('questions')
+        .select('*');
 
-    setTestState({
-      questions: selectedQuestions,
-      answers: initialAnswers,
-      currentQuestion: 0,
-      timeRemaining: 3600,
-      isActive: true,
-      startTime: new Date()
-    });
+      if (error) {
+        console.error('Error fetching questions:', error);
+        throw error;
+      }
+
+      if (!fetchedQuestions || fetchedQuestions.length === 0) {
+        console.error('No questions found in the database.');
+        // Handle case with no questions, maybe show a message to the user
+        return;
+      }
+
+      // Transform database questions to the expected format
+      const transformedQuestions = fetchedQuestions.map(q => ({
+        id: q.id,
+        subject: q.subject,
+        question: q.question,
+        question_image_url: q.question_image_url || null,
+        options: [
+          { text: q.option_a, image_url: q.option_a_image_url || null },
+          { text: q.option_b, image_url: q.option_b_image_url || null },
+          { text: q.option_c, image_url: q.option_c_image_url || null },
+          { text: q.option_d, image_url: q.option_d_image_url || null }
+        ],
+        correctAnswer: q.correct_answer,
+        difficulty: q.difficulty
+      }));
+
+      const shuffledQuestions = [...transformedQuestions].sort(() => Math.random() - 0.5);
+      
+      const initialAnswers = shuffledQuestions.map(q => ({
+        questionId: q.id,
+        selectedAnswer: null,
+        timeSpent: 0,
+        marked: false
+      }));
+
+      setTestState({
+        questions: shuffledQuestions,
+        answers: initialAnswers,
+        currentQuestion: 0,
+        timeRemaining: 3600, // 60 minutes
+        isActive: true,
+        startTime: new Date()
+      });
+      console.log('Test started with questions:', shuffledQuestions);
+    } catch (error) {
+      console.error('Failed to start test:', error);
+    }
   };
 
   const endTest = () => {
     setTestState(prev => ({
       ...prev,
       isActive: false
+    }));
+  };
+
+  const setTimeRemaining = (seconds: number) => {
+    setTestState(prev => ({
+      ...prev,
+      timeRemaining: seconds
     }));
   };
 
@@ -185,20 +196,49 @@ export const TestProvider: React.FC<TestProviderProps> = ({ children }) => {
   };
 
   const submitTest = async () => {
+    if (!user || !testState.startTime) {
+      const errorMessage = 'User not authenticated or test not started.';
+      console.error(errorMessage);
+      throw new Error(errorMessage);
+    }
+
     try {
-      // Mock API call to submit test results
-      const testResults = {
-        answers: testState.answers,
-        startTime: testState.startTime,
-        endTime: new Date(),
-        totalQuestions: testState.questions.length
+      const endTime = new Date();
+      const durationSeconds = Math.round((endTime.getTime() - testState.startTime.getTime()) / 1000);
+
+      let correctAnswers = 0;
+      testState.answers.forEach(answer => {
+        const question = testState.questions.find(q => q.id === answer.questionId);
+        if (question && question.correctAnswer === answer.selectedAnswer) {
+          correctAnswers++;
+        }
+      });
+      const score = Math.round((correctAnswers / testState.questions.length) * 100);
+
+      // Determine the subject for this test (using the subject of the first question)
+      const subject = testState.questions.length > 0 ? testState.questions[0].subject : 'General';
+
+      const testResultData = {
+        user_id: user.id,
+        test_time: testState.startTime.toISOString(),
+        subject: subject,
+        questions: testState.questions, // Include the questions data
+        score: score,
+        duration_seconds: durationSeconds,
+        // The 'answers' field now correctly stores the JSONB data
+        answers: testState.answers 
       };
-      
-      console.log('Submitting test results:', testResults);
-      
-      // In production, this would be an API call
-      // await api.submitTest(testResults);
-      
+
+      console.log('Submitting test results to Supabase:', testResultData);
+
+      const { error } = await supabase.from('test_results').insert([testResultData]);
+
+      if (error) {
+        console.error('Error saving test results:', error);
+        throw error;
+      }
+
+      console.log('Test results submitted successfully!');
       endTest();
     } catch (error) {
       console.error('Error submitting test:', error);
@@ -215,7 +255,8 @@ export const TestProvider: React.FC<TestProviderProps> = ({ children }) => {
     navigateToQuestion,
     nextQuestion,
     previousQuestion,
-    submitTest
+    submitTest,
+    setTimeRemaining
   };
 
   return (

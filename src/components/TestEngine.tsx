@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTest } from '../contexts/TestContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import { 
   Clock, 
   ChevronLeft, 
@@ -14,10 +16,12 @@ import {
 } from 'lucide-react';
 
 const TestEngine: React.FC = () => {
-  const { testState, startTest, selectAnswer, markForReview, navigateToQuestion, nextQuestion, previousQuestion, submitTest } = useTest();
+  const { testState, startTest, selectAnswer, markForReview, navigateToQuestion, nextQuestion, previousQuestion, submitTest, setTimeRemaining } = useTest();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSubmitConfirm, setShowSubmitConfirm] = useState(false);
+  const timeRemainingRef = useRef(testState.timeRemaining);
 
   useEffect(() => {
     if (!testState.isActive && testState.questions.length === 0) {
@@ -26,15 +30,26 @@ const TestEngine: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    timeRemainingRef.current = testState.timeRemaining;
+  }, [testState.timeRemaining]);
+
+  useEffect(() => {
     if (!testState.isActive) return;
 
     const timer = setInterval(() => {
-      // Timer logic would go here
-      // For demo purposes, we'll skip the countdown implementation
+      // Decrement the time remaining
+      const newTime = timeRemainingRef.current - 1;
+      setTimeRemaining(newTime);
+      
+      // End the test if time runs out
+      if (newTime <= 1) {
+        clearInterval(timer);
+        handleSubmit();
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [testState.isActive, testState.timeRemaining]);
+  }, [testState.isActive]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -71,6 +86,47 @@ const TestEngine: React.FC = () => {
   const currentQuestion = testState.questions[testState.currentQuestion];
   const currentAnswer = testState.answers.find(a => a.questionId === currentQuestion?.id);
 
+  // Check if user has already taken the test
+  const [hasTakenTest, setHasTakenTest] = useState(false);
+  
+  useEffect(() => {
+    const checkTestStatus = async () => {
+      if (testState.questions.length === 0) {
+        // Only check if we haven't loaded questions yet
+        const { data: existingResults, error } = await supabase
+          .from('test_results')
+          .select('id')
+          .eq('user_id', user?.id);
+        
+        if (!error && existingResults && existingResults.length > 0) {
+          setHasTakenTest(true);
+        }
+      }
+    };
+    
+    checkTestStatus();
+  }, []);
+  
+  if (hasTakenTest) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="max-w-md mx-auto text-center p-8 bg-white rounded-2xl shadow-xl border border-gray-200">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-4">Test Already Completed</h2>
+          <p className="text-gray-600 mb-6">You have already taken this admission test. Each user is only allowed to take the test once.</p>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl transition-all duration-200"
+          >
+            Return to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
   if (!testState.isActive || !currentQuestion) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -191,6 +247,15 @@ const TestEngine: React.FC = () => {
                 <h2 className="text-2xl font-semibold text-gray-900 mb-8 leading-relaxed">
                   {currentQuestion.question}
                 </h2>
+                {currentQuestion.question_image_url && (
+                  <div className="mb-6">
+                    <img 
+                      src={currentQuestion.question_image_url} 
+                      alt="Question" 
+                      className="max-w-full h-auto rounded-lg shadow-md"
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-4">
                   {currentQuestion.options.map((option, index) => (
@@ -205,13 +270,24 @@ const TestEngine: React.FC = () => {
                         }
                       `}
                     >
-                      <div className="flex items-center space-x-4">
+                      <div className="flex items-start space-x-4">
                         {currentAnswer?.selectedAnswer === index ? (
-                          <CheckCircle className="h-6 w-6 text-blue-600 flex-shrink-0" />
+                          <CheckCircle className="h-6 w-6 text-blue-600 flex-shrink-0 mt-1" />
                         ) : (
-                          <Circle className="h-6 w-6 text-gray-400 flex-shrink-0" />
+                          <Circle className="h-6 w-6 text-gray-400 flex-shrink-0 mt-1" />
                         )}
-                        <span className="text-lg">{option}</span>
+                        <div className="flex-1">
+                          <span className="text-lg font-medium">{option.text}</span>
+                          {option.image_url && (
+                            <div className="mt-2">
+                              <img 
+                                src={option.image_url} 
+                                alt={`Option ${index + 1}`} 
+                                className="max-w-full h-auto rounded-lg shadow-sm"
+                              />
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </button>
                   ))}

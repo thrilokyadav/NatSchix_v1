@@ -1,9 +1,11 @@
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { BookOpen, Shield, Clock, Award, Calendar, Users } from 'lucide-react';
 
 const LandingPage: React.FC = () => {
   const { user, login } = useAuth();
+  const navigate = useNavigate();
 
   const features = [
     {
@@ -101,7 +103,10 @@ const LandingPage: React.FC = () => {
                 </button>
               )}
               
-              <button className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-700 px-6 py-4 rounded-xl font-semibold border border-gray-200 transition-all duration-200 hover:border-gray-300 shadow-sm hover:shadow-md">
+              <button 
+                onClick={() => navigate('/schedule')}
+                className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-700 px-6 py-4 rounded-xl font-semibold border border-gray-200 transition-all duration-200 hover:border-gray-300 shadow-sm hover:shadow-md"
+              >
                 <Calendar className="h-5 w-5" />
                 <span>Schedule Assessment</span>
               </button>

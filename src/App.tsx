@@ -7,6 +7,7 @@ import Registration from './components/Registration';
 import TestDashboard from './components/TestDashboard';
 import TestEngine from './components/TestEngine';
 import AdminPanel from './components/AdminPanel';
+import ScheduleAssessment from './components/ScheduleAssessment';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -39,6 +40,14 @@ function App() {
                 element={
                   <ProtectedRoute requireRegistration>
                     <TestEngine />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/schedule" 
+                element={
+                  <ProtectedRoute requireRegistration>
+                    <ScheduleAssessment />
                   </ProtectedRoute>
                 } 
               />

@@ -1,9 +1,98 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { BookOpen, Clock, Award, BarChart3, Calendar, Play, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
+import { BookOpen, Clock, Award, BarChart3, Calendar, Play, LogOut, CheckCircle } from 'lucide-react';
 
 const TestDashboard: React.FC = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const [hasTakenTest, setHasTakenTest] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkTestStatus = async () => {
+      if (!user) return;
+      
+      try {
+        const { data: existingResults, error } = await supabase
+          .from('test_results')
+          .select('id')
+          .eq('user_id', user.id);
+        
+        if (error) {
+          console.error('Error checking test status:', error);
+        } else {
+          setHasTakenTest(existingResults && existingResults.length > 0);
+        }
+      } catch (err) {
+        console.error('Error checking test status:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkTestStatus();
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-xl text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (hasTakenTest) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
+        {/* Navigation */}
+        <nav className="bg-white/90 backdrop-blur-sm border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex items-center space-x-2">
+                <BookOpen className="h-8 w-8 text-blue-600" />
+                <span className="text-xl font-bold text-gray-900">AssessmentPro</span>
+              </div>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-3">
+                  <img 
+                    src={user?.picture || 'https://via.placeholder.com/32'} 
+                    alt={user?.name}
+                    className="w-8 h-8 rounded-full border-2 border-blue-200"
+                  />
+                  <span className="text-gray-700 font-medium">{user?.name}</span>
+                </div>
+                <button
+                  onClick={logout}
+                  className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200"
+                >
+                  <LogOut className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </nav>
+
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
+          <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 text-center">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="h-8 w-8 text-green-600" />
+            </div>
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">Test Already Completed</h1>
+            <p className="text-xl text-gray-600 mb-8">You have already taken this admission test. Each user is only allowed to take the test once.</p>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8">
+              <h2 className="text-lg font-semibold text-blue-800 mb-2">What's Next?</h2>
+              <p className="text-blue-700">Your test results will be reviewed by our admissions team. You will be notified of the results via email.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const subjects = [
     {
@@ -194,7 +283,10 @@ const TestDashboard: React.FC = () => {
             <span>Start Assessment</span>
           </a>
           
-          <button className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-700 px-6 py-4 rounded-xl font-semibold border border-gray-200 transition-all duration-200 hover:border-gray-300 shadow-sm hover:shadow-md">
+          <button 
+            onClick={() => navigate('/schedule')}
+            className="flex items-center space-x-2 bg-white hover:bg-gray-50 text-gray-700 px-6 py-4 rounded-xl font-semibold border border-gray-200 transition-all duration-200 hover:border-gray-300 shadow-sm hover:shadow-md"
+          >
             <Calendar className="h-5 w-5" />
             <span>Schedule for Later</span>
           </button>
